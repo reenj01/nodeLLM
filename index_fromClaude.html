@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Node-Based Chat Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            overflow: hidden;
+            background: #f7f7f8;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        #background-dots {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+            background-size: 20px 20px;
+            pointer-events: none;
+            z-index: 0;
+            transform-origin: center center;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            overflow: visible;
+        }
+
+        .chatbox {
+            position: absolute;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            min-width: 250px;
+            min-height: 250px;
+            max-width: 800px;
+            max-height: 800px;
+        }
+
+        .chatbox-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e5e5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            background: #fff;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .chatbox-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            background: #ffff99;
+            padding: 4px 8px;
+            border-radius: 4px;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chatbox-title.empty {
+            background: transparent;
+            padding: 0;
+        }
+
+        .delete-btn {
+            background: transparent;
+            color: #4b5563;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            word-wrap: break-word;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: #2563eb;
+            color: white;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: #f3f4f6;
+            color: #1f2937;
+            cursor: text;
+            user-select: text;
+        }
+
+        .message.assistant.selecting {
+            position: relative;
+        }
+
+        .highlight {
+            background: #ffff99;
+            padding: 2px 0;
+        }
+
+        .explore-btn {
+            position: absolute;
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            transition: background 0.2s;
+        }
+
+        .explore-btn:hover {
+            background: #059669;
+        }
+
+        .input-container {
+            padding: 12px 16px;
+            border-top: 1px solid #e5e5e5;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: #fff;
+            border-radius: 0 0 12px 12px;
+        }
+
+        .attach-btn, .mic-btn, .send-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            color: #6b7280;
+        }
+
+        .attach-btn:hover, .mic-btn:hover {
+            background: #f3f4f6;
+        }
+
+        .send-btn {
+            background: #2563eb;
+            color: white;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+
+        .send-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .mic-btn.recording {
+            color: #ef4444;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .input-field {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 14px;
+            font-family: inherit;
+            padding: 8px;
+            resize: none;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .loading-indicator {
+            align-self: flex-start;
+            background: #f3f4f6;
+            color: #6b7280;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+        }
+
+        .loading-indicator::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .attachment-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 16px;
+            border-top: 1px solid #e5e5e5;
+            background: #f9fafb;
+        }
+
+        .attachment-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #374151;
+            max-width: 200px;
+        }
+
+        .attachment-item img {
+            width: 32px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .attachment-item .file-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e5e7eb;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .attachment-item .file-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .attachment-item .remove-attachment {
+            background: #ef4444;
+            color: white;
+            border: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .attachment-item .remove-attachment:hover {
+            background: #dc2626;
+        }
+
+        .message.user .attachment-display {
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .message.user .attachment-display img {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .message.user .attachment-display .file-badge {
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .resize-handle {
+            position: absolute;
+            background: transparent;
+        }
+
+        .resize-handle.se {
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            cursor: nwse-resize;
+        }
+
+        #api-key-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        #api-key-modal.hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 16px;
+            color: #1f2937;
+        }
+
+        .modal-content p {
+            margin-bottom: 16px;
+            color: #6b7280;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .modal-content button {
+            width: 100%;
+            padding: 12px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .modal-content button:hover {
+            background: #1d4ed8;
+        }
+
+        .zoom-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+            color: #6b7280;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="api-key-modal">
+        <div class="modal-content">
+            <h2>OpenAI API Key Required</h2>
+            <p>Please enter your OpenAI API key to use this chat interface. Your key will be stored locally in your browser.</p>
+            <input type="password" id="api-key-input" placeholder="sk-...">
+            <button onclick="saveApiKey()">Save & Continue</button>
+        </div>
+    </div>
+
+    <div id="background-dots"></div>
+    
+    <div id="canvas-container">
+        <svg id="connections-svg"></svg>
+    </div>
+
+    <div class="zoom-indicator">Zoom: <span id="zoom-level">100</span>%</div>
+
+    <script>
+        let chatboxes = [];
+        let connections = [];
+        let chatboxIdCounter = 0;
+        let scale = 1;
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+        let canvasOffset = { x: 0, y: 0 };
+        let isDragging = false;
+        let isResizing = false;
+        let selectedText = null;
+        let exploreButton = null;
+        let usedColors = new Set(); // Track used colors globally
+        let currentTempColor = null; // Track the current temporary highlight color
+        
+        // Array of vibrant highlight colors
+        const highlightColors = [
+            '#ffff99', // light yellow
+            '#ffccff', // light pink
+            '#ccffff', // light cyan
+            '#ffcc99', // light orange
+            '#ccffcc', // light green
+            '#ffcccc', // light red
+            '#ccccff', // light blue
+            '#ffffcc', // pale yellow
+            '#ffccee', // light rose
+            '#ccffee', // mint
+            '#ffeeff', // lavender
+            '#eeffcc', // lime
+            '#ffeedd', // peach
+            '#ddeeff', // sky blue
+            '#ffddee', // pink
+            '#eeffdd', // light lime
+            '#ddffee', // aqua
+            '#ffeacc', // apricot
+            '#ccddff', // periwinkle
+            '#ffddcc'  // coral
+        ];
+
+        const container = document.getElementById('canvas-container');
+        const svg = document.getElementById('connections-svg');
+        const backgroundDots = document.getElementById('background-dots');
+        
+        // Get a unique color that hasn't been used yet
+        function getUniqueHighlightColor() {
+            // Find colors not yet used
+            const availableColors = highlightColors.filter(c => !usedColors.has(c));
+            
+            // If all colors used, reset and start over
+            if (availableColors.length === 0) {
+                usedColors.clear();
+                return highlightColors[0];
+            }
+            
+            // Pick a random available color
+            const color = availableColors[Math.floor(Math.random() * availableColors.length)];
+            return color;
+        }
+
+        // Hide API modal and initialize
+        document.getElementById('api-key-modal').classList.add('hidden');
+        initializeMainChatbox();
+        
+        // Ensure main chatbox is centered on load
+        setTimeout(() => {
+            centerMainChatbox();
+        }, 100);
+
+        function initializeMainChatbox() {
+            const mainChatbox = createChatbox(null, '', true);
+            chatboxes.push(mainChatbox);
+            centerMainChatbox();
+        }
+
+        function createChatbox(parentId, highlightedText, isMain = false, highlightColor = null) {
+            const id = chatboxIdCounter++;
+            
+            // Assign a unique color for this chatbox
+            let chatboxColor;
+            if (isMain) {
+                chatboxColor = '#ffff99'; // Main chatbox always uses yellow
+            } else {
+                chatboxColor = getUniqueHighlightColor(); // Get unique color for child chatbox
+                usedColors.add(chatboxColor); // Mark it as used
+            }
+            
+            const chatbox = {
+                id,
+                element: null,
+                parentId,
+                highlightedText,
+                highlightSpan: null, // Store reference to the highlight span
+                highlightColor: highlightColor, // The color of the highlight that created this chatbox
+                chatboxColor: chatboxColor, // The color this chatbox uses for its own highlights
+                isMain,
+                position: { x: 0, y: 0 },
+                size: { width: 500, height: 500 },
+                messages: [],
+                isDragging: false,
+                isResizing: false
+            };
+
+            const el = document.createElement('div');
+            el.className = 'chatbox';
+            el.style.width = chatbox.size.width + 'px';
+            el.style.height = chatbox.size.height + 'px';
+            
+            // Calculate position to avoid overlap
+            if (isMain) {
+                // Position main chatbox at the actual center of the canvas
+                chatbox.position = { 
+                    x: (window.innerWidth / 2) / scale - 250, 
+                    y: (window.innerHeight / 2) / scale - 250 
+                };
+            } else {
+                chatbox.position = findNonOverlappingPosition(parentId);
+            }
+            
+            el.style.left = chatbox.position.x + 'px';
+            el.style.top = chatbox.position.y + 'px';
+
+            // Apply highlight color to title if it exists
+            const titleStyle = highlightedText && highlightColor ? `background: ${highlightColor};` : '';
+
+            el.innerHTML = `
+                <div class="chatbox-header">
+                    <div class="chatbox-title ${highlightedText ? '' : 'empty'}" style="${titleStyle}">${highlightedText || ''}</div>
+                    ${!isMain ? '<button class="delete-btn" onclick="deleteChatbox(' + id + ')">×</button>' : '<div></div>'}
+                </div>
+                <div class="messages-container" id="messages-${id}"></div>
+                <div class="input-container">
+                    <input type="file" id="file-input-${id}" style="display: none;" accept="image/*,.pdf,.doc,.docx,.txt" multiple>
+                    <button class="attach-btn" onclick="openFileUpload(${id})" title="Attach files">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
+                    </button>
+                    <textarea class="input-field" id="input-${id}" placeholder="Message ChatGPT..." rows="1"></textarea>
+                    <button class="mic-btn" id="mic-${id}" onclick="toggleSpeechRecognition(${id})" title="Use microphone">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </button>
+                    <button class="send-btn" onclick="sendMessage(${id})" title="Send message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="resize-handle se"></div>
+            `;
+
+            chatbox.element = el;
+            container.appendChild(el);
+            
+            // Store attachments array for this chatbox
+            chatbox.attachments = [];
+            
+            // Setup file input handler
+            const fileInput = el.querySelector(`#file-input-${id}`);
+            fileInput.addEventListener('change', (e) => handleFileSelection(id, e.target.files));
+
+            // Make draggable
+            const header = el.querySelector('.chatbox-header');
+            header.addEventListener('mousedown', (e) => startDrag(e, chatbox));
+
+            // Make resizable
+            const resizeHandles = el.querySelectorAll('.resize-handle');
+            resizeHandles.forEach(handle => {
+                handle.addEventListener('mousedown', (e) => startResize(e, chatbox, handle.classList));
+            });
+
+            // Text selection for explore feature
+            const messagesContainer = el.querySelector('.messages-container');
+            messagesContainer.addEventListener('mouseup', (e) => handleTextSelection(e, chatbox));
+            messagesContainer.addEventListener('dblclick', (e) => handleTextSelection(e, chatbox));
+
+            // Auto-resize textarea
+            const input = el.querySelector('.input-field');
+            input.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
+
+            // Enter to send
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(id);
+                }
+            });
+
+            // If has parent, create connection
+            if (parentId !== null) {
+                connections.push({ source: parentId, target: id });
+                
+                // Initialize with context
+                if (highlightedText) {
+                    const parent = chatboxes.find(c => c.id === parentId);
+                    if (parent) {
+                        chatbox.messages = [...parent.messages];
+                    }
+                }
+                
+                // Update connections immediately after adding to DOM
+                setTimeout(() => updateConnections(), 0);
+            }
+
+            return chatbox;
+        }
+
+        function findNonOverlappingPosition(parentId) {
+            const parent = chatboxes.find(c => c.id === parentId);
+            if (!parent) return { x: 100, y: 100 };
+
+            const spacing = 50;
+            const chatboxSize = 520; // 500px + 20px spacing
+            
+            // Try multiple positions around the parent in different directions
+            const directions = [
+                { x: parent.position.x + parent.size.width + spacing, y: parent.position.y }, // Right
+                { x: parent.position.x - chatboxSize, y: parent.position.y }, // Left
+                { x: parent.position.x, y: parent.position.y + parent.size.height + spacing }, // Bottom
+                { x: parent.position.x, y: parent.position.y - chatboxSize }, // Top
+                { x: parent.position.x + parent.size.width + spacing, y: parent.position.y + spacing }, // Bottom-right
+                { x: parent.position.x - chatboxSize, y: parent.position.y + spacing }, // Bottom-left
+                { x: parent.position.x + parent.size.width + spacing, y: parent.position.y - spacing }, // Top-right
+                { x: parent.position.x - chatboxSize, y: parent.position.y - spacing }, // Top-left
+            ];
+            
+            // Shuffle directions for randomness
+            for (let i = directions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [directions[i], directions[j]] = [directions[j], directions[i]];
+            }
+            
+            // Try each direction
+            for (const pos of directions) {
+                const overlapping = chatboxes.some(c => {
+                    if (c.id === parentId) return false;
+                    const dx = Math.abs(c.position.x - pos.x);
+                    const dy = Math.abs(c.position.y - pos.y);
+                    return dx < chatboxSize && dy < chatboxSize;
+                });
+                
+                if (!overlapping) {
+                    return pos;
+                }
+            }
+            
+            // If all primary positions are taken, try random positions in a wider radius
+            const maxAttempts = 20;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 600 + Math.random() * 400;
+                const x = parent.position.x + Math.cos(angle) * distance;
+                const y = parent.position.y + Math.sin(angle) * distance;
+                
+                const overlapping = chatboxes.some(c => {
+                    if (c.id === parentId) return false;
+                    const dx = Math.abs(c.position.x - x);
+                    const dy = Math.abs(c.position.y - y);
+                    return dx < chatboxSize && dy < chatboxSize;
+                });
+                
+                if (!overlapping) {
+                    return { x, y };
+                }
+            }
+            
+            // Fallback: place it to the right with offset
+            return { 
+                x: parent.position.x + parent.size.width + spacing, 
+                y: parent.position.y + (Math.random() * 200 - 100)
+            };
+        }
+
+        function startDrag(e, chatbox) {
+            if (e.target.closest('.delete-btn') || e.target.closest('button')) return;
+            
+            isDragging = true;
+            chatbox.isDragging = true;
+            chatbox.dragStart = {
+                x: e.clientX / scale - chatbox.position.x,
+                y: e.clientY / scale - chatbox.position.y
+            };
+
+            e.preventDefault();
+        }
+
+        function startResize(e, chatbox, classList) {
+            isResizing = true;
+            chatbox.isResizing = true;
+            chatbox.resizeStart = {
+                x: e.clientX,
+                y: e.clientY,
+                width: chatbox.size.width,
+                height: chatbox.size.height
+            };
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            const activeChatbox = chatboxes.find(c => c.isDragging);
+            if (activeChatbox) {
+                activeChatbox.position.x = e.clientX / scale - activeChatbox.dragStart.x;
+                activeChatbox.position.y = e.clientY / scale - activeChatbox.dragStart.y;
+                activeChatbox.element.style.left = activeChatbox.position.x + 'px';
+                activeChatbox.element.style.top = activeChatbox.position.y + 'px';
+                requestAnimationFrame(() => updateConnections());
+            }
+
+            const resizingChatbox = chatboxes.find(c => c.isResizing);
+            if (resizingChatbox) {
+                const dx = e.clientX - resizingChatbox.resizeStart.x;
+                const dy = e.clientY - resizingChatbox.resizeStart.y;
+                
+                // Resize both width and height simultaneously
+                const newWidth = Math.max(250, Math.min(800, resizingChatbox.resizeStart.width + dx));
+                const newHeight = Math.max(250, Math.min(800, resizingChatbox.resizeStart.height + dy));
+                
+                resizingChatbox.size.width = newWidth;
+                resizingChatbox.size.height = newHeight;
+                resizingChatbox.element.style.width = newWidth + 'px';
+                resizingChatbox.element.style.height = newHeight + 'px';
+                
+                requestAnimationFrame(() => updateConnections());
+            }
+
+            // Panning
+            if (isPanning) {
+                const dx = e.clientX - panStart.x;
+                const dy = e.clientY - panStart.y;
+                canvasOffset.x += dx;
+                canvasOffset.y += dy;
+                panStart = { x: e.clientX, y: e.clientY };
+                updateCanvasTransform();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            chatboxes.forEach(c => {
+                c.isDragging = false;
+                c.isResizing = false;
+            });
+            isDragging = false;
+            isResizing = false;
+            isPanning = false;
+        });
+
+        // Panning
+        document.addEventListener('mousedown', (e) => {
+            if (e.target === document.body || e.target === container || e.target === svg) {
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY };
+                e.preventDefault();
+            }
+        });
+
+        // Zoom
+        document.addEventListener('wheel', (e) => {
+            if (e.ctrlKey || e.metaKey) e.preventDefault();
+            
+            const delta = e.deltaY > 0 ? 0.95 : 1.05;
+            const newScale = Math.max(0.25, Math.min(2, scale * delta));
+            
+            // Get mouse position relative to viewport
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+            
+            // Calculate the point under the mouse in the current scale
+            const rect = container.getBoundingClientRect();
+            const offsetX = (mouseX - rect.left) / scale;
+            const offsetY = (mouseY - rect.top) / scale;
+            
+            // Update scale
+            const oldScale = scale;
+            scale = newScale;
+            
+            // Adjust canvas offset to keep the point under mouse stationary
+            canvasOffset.x = mouseX - offsetX * scale;
+            canvasOffset.y = mouseY - offsetY * scale;
+            
+            updateCanvasTransform();
+            updateConnections();
+            updateZoomIndicator();
+            e.preventDefault();
+        }, { passive: false });
+
+        function updateCanvasTransform() {
+            container.style.transform = `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${scale})`;
+            container.style.transformOrigin = '0 0';
+            
+            // Update connections after transform
+            requestAnimationFrame(() => updateConnections());
+        }
+
+        function centerMainChatbox() {
+            const mainChatbox = chatboxes.find(c => c.isMain);
+            if (mainChatbox) {
+                const centerX = window.innerWidth / 2 - (mainChatbox.size.width * scale) / 2;
+                const centerY = window.innerHeight / 2 - (mainChatbox.size.height * scale) / 2;
+                
+                canvasOffset.x = centerX - mainChatbox.position.x * scale;
+                canvasOffset.y = centerY - mainChatbox.position.y * scale;
+                
+                updateCanvasTransform();
+                updateConnections();
+            }
+        }
+
+        // File upload functions
+        function openFileUpload(chatboxId) {
+            const fileInput = document.getElementById(`file-input-${chatboxId}`);
+            if (fileInput) {
+                fileInput.click();
+            }
+        }
+
+        function handleFileSelection(chatboxId, files) {
+            const chatbox = chatboxes.find(c => c.id === chatboxId);
+            if (!chatbox) return;
+
+            // Add files to chatbox attachments
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                
+                if (file.type.startsWith('image/')) {
+                    reader.onload = (e) => {
+                        chatbox.attachments.push({
+                            type: 'image',
+                            name: file.name,
+                            data: e.target.result,
+                            file: file
+                        });
+                        updateAttachmentPreview(chatboxId);
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    chatbox.attachments.push({
+                        type: 'file',
+                        name: file.name,
+                        file: file
+                    });
+                    updateAttachmentPreview(chatboxId);
+                }
+            });
+            
+            // Clear the file input
+            const fileInput = document.getElementById(`file-input-${chatboxId}`);
+            if (fileInput) fileInput.value = '';
+        }
+
+        function updateAttachmentPreview(chatboxId) {
+            const chatbox = chatboxes.find(c => c.id === chatboxId);
+            if (!chatbox) return;
+
+            const inputContainer = chatbox.element.querySelector('.input-container');
+            
+            // Remove existing preview
+            let preview = chatbox.element.querySelector('.attachment-preview');
+            if (preview) preview.remove();
+
+            // Create new preview if there are attachments
+            if (chatbox.attachments.length > 0) {
+                preview = document.createElement('div');
+                preview.className = 'attachment-preview';
+
+                chatbox.attachments.forEach((attachment, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'attachment-item';
+
+                    if (attachment.type === 'image') {
+                        const img = document.createElement('img');
+                        img.src = attachment.data;
+                        img.alt = attachment.name;
+                        item.appendChild(img);
+                    } else {
+                        const icon = document.createElement('div');
+                        icon.className = 'file-icon';
+                        const ext = attachment.name.split('.').pop().toUpperCase();
+                        icon.textContent = ext;
+                        item.appendChild(icon);
+                    }
+
+                    const fileName = document.createElement('span');
+                    fileName.className = 'file-name';
+                    fileName.textContent = attachment.name;
+                    item.appendChild(fileName);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-attachment';
+                    removeBtn.textContent = '×';
+                    removeBtn.onclick = () => removeAttachment(chatboxId, index);
+                    item.appendChild(removeBtn);
+
+                    preview.appendChild(item);
+                });
+
+                inputContainer.parentNode.insertBefore(preview, inputContainer);
+            }
+        }
+
+        function removeAttachment(chatboxId, index) {
+            const chatbox = chatboxes.find(c => c.id === chatboxId);
+            if (!chatbox) return;
+
+            chatbox.attachments.splice(index, 1);
+            updateAttachmentPreview(chatboxId);
+        }
+
+        function updateZoomIndicator() {
+            document.getElementById('zoom-level').textContent = Math.round(scale * 100);
+        }
+
+        function updateConnections() {
+            svg.innerHTML = '';
+            
+            connections.forEach(conn => {
+                const source = chatboxes.find(c => c.id === conn.source);
+                const target = chatboxes.find(c => c.id === conn.target);
+                
+                if (source && target) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    
+                    // Calculate center points of each chatbox (in canvas coordinates)
+                    const x1 = source.position.x + source.size.width / 2;
+                    const y1 = source.position.y + source.size.height / 2;
+                    const x2 = target.position.x + target.size.width / 2;
+                    const y2 = target.position.y + target.size.height / 2;
+                    
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
+                    line.setAttribute('stroke', '#999999');
+                    line.setAttribute('stroke-width', '2');
+                    line.style.pointerEvents = 'none';
+                    
+                    svg.appendChild(line);
+                }
+            });
+        }
+
+        function deleteChatbox(id) {
+            const chatbox = chatboxes.find(c => c.id === id);
+            if (chatbox && !chatbox.isMain) {
+                // Recursively delete all child chatboxes
+                function deleteChildren(parentId) {
+                    const children = chatboxes.filter(c => c.parentId === parentId);
+                    children.forEach(child => {
+                        // First delete this child's children
+                        deleteChildren(child.id);
+                        
+                        // Remove the highlight from the parent chatbox and free the color
+                        if (child.highlightSpan && child.highlightSpan.parentNode) {
+                            const parent = child.highlightSpan.parentNode;
+                            const text = document.createTextNode(child.highlightSpan.textContent);
+                            parent.replaceChild(text, child.highlightSpan);
+                            parent.normalize();
+                        }
+                        
+                        // Free the chatbox color for reuse
+                        if (child.chatboxColor && child.chatboxColor !== '#ffff99') {
+                            usedColors.delete(child.chatboxColor);
+                        }
+                        
+                        // Remove the element
+                        if (child.element) {
+                            child.element.remove();
+                        }
+                        
+                        // Remove from chatboxes array
+                        chatboxes = chatboxes.filter(c => c.id !== child.id);
+                        
+                        // Remove connections
+                        connections = connections.filter(c => c.source !== child.id && c.target !== child.id);
+                    });
+                }
+                
+                // Delete all children first
+                deleteChildren(id);
+                
+                // Remove the highlight from the parent chatbox
+                if (chatbox.highlightSpan && chatbox.highlightSpan.parentNode) {
+                    const parent = chatbox.highlightSpan.parentNode;
+                    const text = document.createTextNode(chatbox.highlightSpan.textContent);
+                    parent.replaceChild(text, chatbox.highlightSpan);
+                    parent.normalize();
+                }
+                
+                // Free the chatbox color for reuse
+                if (chatbox.chatboxColor && chatbox.chatboxColor !== '#ffff99') {
+                    usedColors.delete(chatbox.chatboxColor);
+                }
+                
+                // Remove the chatbox itself
+                chatbox.element.remove();
+                chatboxes = chatboxes.filter(c => c.id !== id);
+                connections = connections.filter(c => c.source !== id && c.target !== id);
+                
+                updateConnections();
+                autoFitZoom();
+            }
+        }
+
+        function handleTextSelection(e, chatbox) {
+            if (e.target.classList.contains('message') && e.target.classList.contains('assistant')) {
+                const selection = window.getSelection();
+                const selectedText = selection.toString().trim();
+                
+                if (selectedText.length > 0) {
+                    // Check if selection overlaps with a permanent highlight
+                    const range = selection.getRangeAt(0);
+                    let overlapsPermanent = false;
+                    
+                    // Check if any permanent highlights exist in the selection
+                    const tempDiv = document.createElement('div');
+                    try {
+                        tempDiv.appendChild(range.cloneContents());
+                        if (tempDiv.querySelector('.highlight[data-permanent="true"]')) {
+                            overlapsPermanent = true;
+                        }
+                    } catch (err) {
+                        // Ignore error
+                    }
+                    
+                    // Also check if the selection starts or ends inside a permanent highlight
+                    let node = range.startContainer;
+                    while (node && node !== e.target) {
+                        if (node.nodeType === 1 && node.classList && node.classList.contains('highlight') && node.getAttribute('data-permanent') === 'true') {
+                            overlapsPermanent = true;
+                            break;
+                        }
+                        node = node.parentNode;
+                    }
+                    
+                    node = range.endContainer;
+                    while (node && node !== e.target) {
+                        if (node.nodeType === 1 && node.classList && node.classList.contains('highlight') && node.getAttribute('data-permanent') === 'true') {
+                            overlapsPermanent = true;
+                            break;
+                        }
+                        node = node.parentNode;
+                    }
+                    
+                    // If overlaps with permanent highlight, cancel the selection
+                    if (overlapsPermanent) {
+                        selection.removeAllRanges();
+                        
+                        // Remove any temporary highlights
+                        document.querySelectorAll('.highlight:not([data-permanent="true"])').forEach(el => {
+                            const parent = el.parentNode;
+                            const text = document.createTextNode(el.textContent);
+                            parent.replaceChild(text, el);
+                            parent.normalize();
+                        });
+                        
+                        // Remove explore button
+                        if (exploreButton) {
+                            exploreButton.remove();
+                            exploreButton = null;
+                        }
+                        return;
+                    }
+                    
+                    // Remove previous temporary highlights (not permanent ones)
+                    document.querySelectorAll('.highlight:not([data-permanent="true"])').forEach(el => {
+                        const parent = el.parentNode;
+                        const text = document.createTextNode(el.textContent);
+                        parent.replaceChild(text, el);
+                        parent.normalize();
+                    });
+                    
+                    // Remove previous explore button
+                    if (exploreButton) {
+                        exploreButton.remove();
+                        exploreButton = null;
+                    }
+                    
+                    // Check if selection is within a single message element
+                    if (range.commonAncestorContainer === e.target || 
+                        range.commonAncestorContainer.parentElement === e.target ||
+                        e.target.contains(range.commonAncestorContainer)) {
+                        
+                        // Use this chatbox's designated color
+                        const highlightColor = chatbox.chatboxColor;
+                        
+                        // Create highlight span (temporary - not permanent yet)
+                        const span = document.createElement('span');
+                        span.className = 'highlight';
+                        span.style.backgroundColor = highlightColor;
+                        span.setAttribute('data-color', highlightColor);
+                        
+                        try {
+                            range.surroundContents(span);
+                        } catch (err) {
+                            // If surroundContents fails (e.g., selection spans multiple nodes),
+                            // extract contents and wrap them
+                            const fragment = range.extractContents();
+                            span.appendChild(fragment);
+                            range.insertNode(span);
+                        }
+
+                        // Create explore button
+                        exploreButton = document.createElement('button');
+                        exploreButton.className = 'explore-btn';
+                        exploreButton.textContent = 'Explore';
+                        exploreButton.onclick = () => createExploreNode(chatbox.id, selectedText, span, highlightColor);
+                        
+                        // Position the button relative to the highlighted text
+                        const rect = span.getBoundingClientRect();
+                        
+                        // Calculate position: right edge of highlight + 5px to the right, slightly below
+                        const btnLeft = rect.right + 5;
+                        const btnTop = rect.bottom + 5;
+                        
+                        exploreButton.style.left = btnLeft + 'px';
+                        exploreButton.style.top = btnTop + 'px';
+                        
+                        document.body.appendChild(exploreButton);
+                        
+                        selection.removeAllRanges();
+                    }
+                }
+            }
+        }
+
+        // Remove temporary highlights when clicking elsewhere
+        document.addEventListener('mousedown', (e) => {
+            // Don't remove if clicking on the explore button
+            if (e.target === exploreButton || (exploreButton && exploreButton.contains(e.target))) {
+                return;
+            }
+            
+            // Don't remove if clicking inside a message to select text
+            if (e.target.classList.contains('message') && e.target.classList.contains('assistant')) {
+                return;
+            }
+            
+            // Remove temporary highlights
+            document.querySelectorAll('.highlight:not([data-permanent="true"])').forEach(el => {
+                const parent = el.parentNode;
+                const text = document.createTextNode(el.textContent);
+                parent.replaceChild(text, el);
+                parent.normalize();
+            });
+            
+            // Remove explore button
+            if (exploreButton) {
+                exploreButton.remove();
+                exploreButton = null;
+            }
+        });
+
+        function createExploreNode(parentId, text, highlightSpan, highlightColor) {
+            const newChatbox = createChatbox(parentId, text, false, highlightColor);
+            
+            // Store reference to the highlight span
+            newChatbox.highlightSpan = highlightSpan;
+            
+            // Keep the highlight permanent
+            if (highlightSpan) {
+                highlightSpan.setAttribute('data-permanent', 'true');
+            }
+            
+            chatboxes.push(newChatbox);
+            
+            if (exploreButton) {
+                exploreButton.remove();
+                exploreButton = null;
+            }
+            
+            autoFitZoom();
+        }
+
+        function autoFitZoom() {
+            if (chatboxes.length <= 1) return;
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            chatboxes.forEach(c => {
+                minX = Math.min(minX, c.position.x);
+                minY = Math.min(minY, c.position.y);
+                maxX = Math.max(maxX, c.position.x + c.size.width);
+                maxY = Math.max(maxY, c.position.y + c.size.height);
+            });
+
+            const width = maxX - minX + 100;
+            const height = maxY - minY + 100;
+            
+            const scaleX = window.innerWidth / width;
+            const scaleY = window.innerHeight / height;
+            
+            scale = Math.min(scaleX, scaleY, 1);
+            scale = Math.max(0.25, Math.min(2, scale));
+            
+            updateCanvasTransform();
+            updateZoomIndicator();
+        }
+
+        // Dummy response generator
+        function generateDummyResponse(userMessage, highlightedText) {
+            const responses = [
+                "That's an interesting question! Let me break it down for you. First, we need to consider the fundamental principles involved. The key aspects include data analysis, pattern recognition, and strategic implementation. Each of these components plays a crucial role in achieving optimal results.",
+                "Based on your query, there are several important factors to consider. Machine learning algorithms can help automate this process, while neural networks provide deeper insights. The combination of these technologies enables more sophisticated solutions that adapt to changing conditions.",
+                "Great point! This topic involves multiple dimensions. From a technical perspective, we should examine the architecture, scalability, and performance metrics. User experience is equally important, as it determines how effectively the solution meets real-world needs.",
+                "Let me explain this concept in detail. The process begins with data collection and preprocessing. Next, we apply various analytical techniques to extract meaningful patterns. Finally, we implement the findings through practical applications that deliver tangible value.",
+                "That's a fascinating area to explore! The key components include algorithmic efficiency, resource optimization, and sustainable practices. By integrating these elements, we can create robust systems that perform reliably across different scenarios.",
+                "Excellent question! To address this properly, we need to look at both theoretical foundations and practical implementations. The theoretical framework provides the conceptual understanding, while practical applications demonstrate how these concepts work in real situations.",
+                "This is definitely worth exploring further. Modern approaches leverage cloud computing, distributed systems, and advanced analytics. These technologies work together to process large volumes of data efficiently and generate actionable insights.",
+                "You've touched on an important subject. The evolution of this field has been remarkable, with continuous innovations improving capabilities. Current best practices emphasize automation, integration, and intelligent decision-making processes."
+            ];
+            
+            if (highlightedText) {
+                return `Regarding "${highlightedText}": ${responses[Math.floor(Math.random() * responses.length)]} This specific aspect relates directly to ${highlightedText.toLowerCase()}, which is crucial for understanding the broader context. Would you like me to elaborate on any particular point?`;
+            }
+            
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+
+        async function sendMessage(chatboxId) {
+            const chatbox = chatboxes.find(c => c.id === chatboxId);
+            if (!chatbox) return;
+
+            const input = document.getElementById(`input-${chatboxId}`);
+            const message = input.value.trim();
+            
+            if (!message && chatbox.attachments.length === 0) return;
+
+            const messagesContainer = document.getElementById(`messages-${chatboxId}`);
+            
+            // Add user message
+            const userMsg = document.createElement('div');
+            userMsg.className = 'message user';
+            
+            // Add attachments if any
+            if (chatbox.attachments.length > 0) {
+                const attachmentDisplay = document.createElement('div');
+                attachmentDisplay.className = 'attachment-display';
+                
+                chatbox.attachments.forEach(attachment => {
+                    if (attachment.type === 'image') {
+                        const img = document.createElement('img');
+                        img.src = attachment.data;
+                        img.alt = attachment.name;
+                        img.onclick = () => window.open(attachment.data, '_blank');
+                        attachmentDisplay.appendChild(img);
+                    } else {
+                        const fileBadge = document.createElement('div');
+                        fileBadge.className = 'file-badge';
+                        fileBadge.innerHTML = `
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                                <polyline points="13 2 13 9 20 9"/>
+                            </svg>
+                            <span>${attachment.name}</span>
+                        `;
+                        attachmentDisplay.appendChild(fileBadge);
+                    }
+                });
+                
+                userMsg.appendChild(attachmentDisplay);
+            }
+            
+            // Add text message if any
+            if (message) {
+                const textNode = document.createTextNode(message);
+                userMsg.appendChild(textNode);
+            }
+            
+            messagesContainer.appendChild(userMsg);
+            
+            chatbox.messages.push({ 
+                role: 'user', 
+                content: message,
+                attachments: chatbox.attachments.length > 0 ? [...chatbox.attachments] : null
+            });
+            
+            // Clear attachments and preview
+            chatbox.attachments = [];
+            updateAttachmentPreview(chatboxId);
+            
+            input.value = '';
+            input.style.height = 'auto';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            // Show loading
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'loading-indicator';
+            loadingMsg.textContent = 'Thinking';
+            messagesContainer.appendChild(loadingMsg);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            // Simulate API delay
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
+
+            loadingMsg.remove();
+
+            // Generate dummy response
+            const assistantMessage = generateDummyResponse(message, chatbox.highlightedText);
+
+            const assistantMsg = document.createElement('div');
+            assistantMsg.className = 'message assistant';
+            assistantMsg.textContent = assistantMessage;
+            messagesContainer.appendChild(assistantMsg);
+            
+            chatbox.messages.push({ role: 'assistant', content: assistantMessage });
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        let recognition = null;
+        let currentRecordingChatbox = null;
+
+        function toggleSpeechRecognition(chatboxId) {
+            const micBtn = document.getElementById(`mic-${chatboxId}`);
+            
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+                return;
+            }
+
+            if (currentRecordingChatbox === chatboxId) {
+                // Stop recording
+                if (recognition) {
+                    recognition.stop();
+                    recognition = null;
+                }
+                micBtn.classList.remove('recording');
+                currentRecordingChatbox = null;
+            } else {
+                // Start recording
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+
+                recognition.onstart = () => {
+                    micBtn.classList.add('recording');
+                    currentRecordingChatbox = chatboxId;
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    const input = document.getElementById(`input-${chatboxId}`);
+                    input.value = transcript;
+                    input.dispatchEvent(new Event('input'));
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    micBtn.classList.remove('recording');
+                    currentRecordingChatbox = null;
+                };
+
+                recognition.onend = () => {
+                    micBtn.classList.remove('recording');
+                    currentRecordingChatbox = null;
+                };
+
+                recognition.start();
+            }
+        }
+
+        // Initialize zoom indicator
+        updateZoomIndicator();
+    </script>
+</body>
+</html>
