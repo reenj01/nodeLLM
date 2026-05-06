@@ -408,6 +408,54 @@ function updateCanvasTransform() {
   requestAnimationFrame(() => updateConnections());
 }
 
+function animatePanBy(dx, dy, durationMs = 350) {
+  const startX = canvasOffset.x;
+  const startY = canvasOffset.y;
+  const endX = startX + dx;
+  const endY = startY + dy;
+  const startTime = performance.now();
+
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+  function step(now) {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      const eased = easeOutCubic(t);
+      canvasOffset.x = startX + (endX - startX) * eased;
+      canvasOffset.y = startY + (endY - startY) * eased;
+      updateCanvasTransform();
+
+      if (t < 1) requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
+
+function panToRevealChatbox(chatbox, margin = 24) {
+  if (!chatbox) return;
+
+  // Chatbox position is in canvas coordinates; convert to viewport coordinates.
+  const left = canvasOffset.x + chatbox.position.x * scale;
+  const top = canvasOffset.y + chatbox.position.y * scale;
+  const right = left + chatbox.size.width * scale;
+  const bottom = top + chatbox.size.height * scale;
+
+  const viewLeft = margin;
+  const viewTop = margin;
+  const viewRight = window.innerWidth - margin;
+  const viewBottom = window.innerHeight - margin;
+
+  let dx = 0;
+  let dy = 0;
+
+  if (left < viewLeft) dx = viewLeft - left;
+  else if (right > viewRight) dx = viewRight - right;
+
+  if (top < viewTop) dy = viewTop - top;
+  else if (bottom > viewBottom) dy = viewBottom - bottom;
+
+  if (dx !== 0 || dy !== 0) animatePanBy(dx, dy, 420);
+}
+
 function centerMainChatbox() {
   const mainChatbox = chatboxes.find(c => c.isMain);
   if (mainChatbox) {
@@ -791,6 +839,9 @@ function createExploreNode(parentId, text, highlightSpan, highlightColor) {
   setTimeout(() => {
       const input = document.getElementById(`input-${newChatbox.id}`);
       if (input) input.focus();
+
+      // Smoothly pan so the new chatbox is fully visible (no zoom changes).
+      panToRevealChatbox(newChatbox, 24);
   }, 0);
 }
 
