@@ -23,16 +23,36 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    const { message } = req.body ?? {};
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({ error: "Missing 'message' string" });
+    const { message, messages, context } = req.body ?? {};
+
+    const hasMessagesArray =
+      Array.isArray(messages) &&
+      messages.every(
+        (m) =>
+          m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string"
+      );
+
+    if (!hasMessagesArray && (!message || typeof message !== "string")) {
+      return res.status(400).json({
+        error: "Provide either { message: string } or { messages: {role, content}[] }",
+      });
     }
+
+    const finalMessages = hasMessagesArray
+      ? messages
+      : [{ role: "user", content: message }];
 
     const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514";
     const resp = await anthropic.messages.create({
       model,
       max_tokens: 600,
-      messages: [{ role: "user", content: message }],
+      system:
+        typeof context === "string" && context.trim().length
+          ? `You are helping the user explore this highlighted topic: "${context.trim()}". Keep the conversation grounded in that topic unless the user clearly changes direction.`
+          : undefined,
+      messages: finalMessages,
     });
 
     const text =

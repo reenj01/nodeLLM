@@ -93,7 +93,7 @@ function createChatbox(parentId, highlightedText, isMain = false, highlightColor
       chatboxColor: chatboxColor, // The color this chatbox uses for its own highlights
       isMain,
       position: { x: 0, y: 0 },
-      size: { width: 500, height: 500 },
+      size: isMain ? { width: 360, height: 360 } : { width: 420, height: 420 },
       messages: [],
       isDragging: false,
       isResizing: false
@@ -365,6 +365,13 @@ document.addEventListener('mousedown', (e) => {
 
 // Zoom
 document.addEventListener('wheel', (e) => {
+  // If the cursor is over a chatbox (messages, textarea, etc), let the
+  // chatbox scroll naturally instead of zooming the entire canvas.
+  const target = e.target;
+  if (target && target.closest && target.closest('.chatbox')) {
+      return;
+  }
+
   if (e.ctrlKey || e.metaKey) e.preventDefault();
   
   const delta = e.deltaY > 0 ? 0.95 : 1.05;
@@ -779,8 +786,12 @@ function createExploreNode(parentId, text, highlightSpan, highlightColor) {
       exploreButton.remove();
       exploreButton = null;
   }
-  
-  autoFitZoom();
+
+  // Focus the input in the newly created chatbox so the user can type immediately.
+  setTimeout(() => {
+      const input = document.getElementById(`input-${newChatbox.id}`);
+      if (input) input.focus();
+  }, 0);
 }
 
 function autoFitZoom() {
@@ -883,10 +894,19 @@ async function sendMessage(chatboxId) {
 
   let assistantMessage = '';
   try {
+      const apiMessages = chatbox.messages
+          .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map(m => ({ role: m.role, content: m.content }));
+
       const resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message })
+          body: JSON.stringify({
+              // Send full chat history for this node (child nodes inherit parent history).
+              messages: apiMessages,
+              // If this is an “explore” node, include its highlighted topic as system context.
+              context: chatbox.highlightedText || null
+          })
       });
 
       if (!resp.ok) {

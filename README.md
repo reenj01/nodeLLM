@@ -6,7 +6,9 @@ Interactive node-based chat UI powered by a Claude backend. The frontend is plai
 
 - **Node-based chat UI**: draggable/resizable chatboxes connected on a canvas.
 - **Claude integration**: real responses via Anthropic’s Messages API.
-- **Highlight & explore**: select text in assistant messages to spawn child nodes.
+- **Highlight & explore**: select text in assistant messages to spawn child nodes (the highlight becomes that node’s topic context for Claude).
+- **Fast typing workflow**: new explore nodes auto-focus the input so you can type immediately.
+- **Scroll feels right**: mouse wheel over a chatbox scrolls that chatbox (zoom only happens when scrolling the canvas).
 - **Safe secret handling**: API key stays on the server in `.env`, never in the browser or Git.
 
 ### Prerequisites
@@ -52,13 +54,22 @@ Then open `http://localhost:3000` in your browser.
 
 - **Frontend** (`index.html`, `styles.css`, `script.js`):
   - Renders the node-based chat interface.
-  - Calls `POST /api/chat` with the current message.
+  - Calls `POST /api/chat` with the node’s chat history (`messages`) and optional explore context (`context`).
   - Renders Claude’s response in the active chatbox.
 - **Backend** (`server.js`):
   - Uses `dotenv` to read `ANTHROPIC_API_KEY` (server-side only).
   - Exposes `POST /api/chat` and forwards the message to Anthropic:
     - Model: `process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514"`.
+    - If `context` is provided, it’s applied as a system instruction to keep answers grounded in the highlighted topic.
     - Returns the combined text content from the Claude response.
+
+### UI notes
+
+- **Default sizes**
+  - Main (first) chatbox defaults to **360×360**
+  - Explore/child chatboxes default to **420×420**
+- **Smaller UI**
+  - Chat text, controls, and icons have been tuned smaller for a denser layout.
 
 ### Security & Git hygiene
 
