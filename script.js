@@ -611,7 +611,8 @@ function deleteChatbox(id) {
 }
 
 function handleTextSelection(e, chatbox) {
-  if (e.target.classList.contains('message') && e.target.classList.contains('assistant')) {
+  const messageEl = e.target.closest ? e.target.closest('.message.assistant') : null;
+  if (messageEl) {
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
       
@@ -633,7 +634,7 @@ function handleTextSelection(e, chatbox) {
           
           // Also check if the selection starts or ends inside a permanent highlight
           let node = range.startContainer;
-          while (node && node !== e.target) {
+          while (node && node !== messageEl) {
               if (node.nodeType === 1 && node.classList && node.classList.contains('highlight') && node.getAttribute('data-permanent') === 'true') {
                   overlapsPermanent = true;
                   break;
@@ -642,7 +643,7 @@ function handleTextSelection(e, chatbox) {
           }
           
           node = range.endContainer;
-          while (node && node !== e.target) {
+          while (node && node !== messageEl) {
               if (node.nodeType === 1 && node.classList && node.classList.contains('highlight') && node.getAttribute('data-permanent') === 'true') {
                   overlapsPermanent = true;
                   break;
@@ -685,9 +686,9 @@ function handleTextSelection(e, chatbox) {
           }
           
           // Check if selection is within a single message element
-          if (range.commonAncestorContainer === e.target || 
-              range.commonAncestorContainer.parentElement === e.target ||
-              e.target.contains(range.commonAncestorContainer)) {
+          if (range.commonAncestorContainer === messageEl || 
+              range.commonAncestorContainer.parentElement === messageEl ||
+              messageEl.contains(range.commonAncestorContainer)) {
               
               // Use this chatbox's designated color
               const highlightColor = chatbox.chatboxColor;
@@ -713,6 +714,8 @@ function handleTextSelection(e, chatbox) {
               exploreButton.className = 'explore-btn';
               exploreButton.textContent = 'Explore';
               exploreButton.onclick = () => createExploreNode(chatbox.id, selectedText, span, highlightColor);
+              // Use fixed positioning because we're placing relative to viewport rect.
+              exploreButton.style.position = 'fixed';
               
               // Position the button relative to the highlighted text
               const rect = span.getBoundingClientRect();
@@ -724,7 +727,7 @@ function handleTextSelection(e, chatbox) {
               exploreButton.style.left = btnLeft + 'px';
               exploreButton.style.top = btnTop + 'px';
               
-              document.appendChild(exploreButton);
+              document.body.appendChild(exploreButton);
               
               selection.removeAllRanges();
           }
@@ -740,7 +743,7 @@ document.addEventListener('mousedown', (e) => {
   }
   
   // Don't remove if clicking inside a message to select text
-  if (e.target.classList.contains('message') && e.target.classList.contains('assistant')) {
+  if (e.target.closest && e.target.closest('.message.assistant')) {
       return;
   }
   
@@ -803,26 +806,6 @@ function autoFitZoom() {
   
   updateCanvasTransform();
   updateZoomIndicator();
-}
-
-// Dummy response generator
-function generateDummyResponse(userMessage, highlightedText) {
-  const responses = [
-      "That's an interesting question! Let me break it down for you. First, we need to consider the fundamental principles involved. The key aspects include data analysis, pattern recognition, and strategic implementation. Each of these components plays a crucial role in achieving optimal results.",
-      "Based on your query, there are several important factors to consider. Machine learning algorithms can help automate this process, while neural networks provide deeper insights. The combination of these technologies enables more sophisticated solutions that adapt to changing conditions.",
-      "Great point! This topic involves multiple dimensions. From a technical perspective, we should examine the architecture, scalability, and performance metrics. User experience is equally important, as it determines how effectively the solution meets real-world needs.",
-      "Let me explain this concept in detail. The process begins with data collection and preprocessing. Next, we apply various analytical techniques to extract meaningful patterns. Finally, we implement the findings through practical applications that deliver tangible value.",
-      "That's a fascinating area to explore! The key components include algorithmic efficiency, resource optimization, and sustainable practices. By integrating these elements, we can create robust systems that perform reliably across different scenarios.",
-      "Excellent question! To address this properly, we need to look at both theoretical foundations and practical implementations. The theoretical framework provides the conceptual understanding, while practical applications demonstrate how these concepts work in real situations.",
-      "This is definitely worth exploring further. Modern approaches leverage cloud computing, distributed systems, and advanced analytics. These technologies work together to process large volumes of data efficiently and generate actionable insights.",
-      "You've touched on an important subject. The evolution of this field has been remarkable, with continuous innovations improving capabilities. Current best practices emphasize automation, integration, and intelligent decision-making processes."
-  ];
-  
-  if (highlightedText) {
-      return `Regarding "${highlightedText}": ${responses[Math.floor(Math.random() * responses.length)]} This specific aspect relates directly to ${highlightedText.toLowerCase()}, which is crucial for understanding the broader context. Would you like me to elaborate on any particular point?`;
-  }
-  
-  return responses[Math.floor(Math.random() * responses.length)];
 }
 
 async function sendMessage(chatboxId) {
@@ -898,13 +881,29 @@ async function sendMessage(chatboxId) {
   messagesContainer.appendChild(loadingMsg);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
+  let assistantMessage = '';
+  try {
+      const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+      });
+
+      if (!resp.ok) {
+          const maybeJson = await resp.json().catch(() => null);
+          const serverError = maybeJson?.error ? ` (${maybeJson.error})` : '';
+          throw new Error(`Request failed: ${resp.status}${serverError}`);
+      }
+
+      const data = await resp.json();
+      assistantMessage = (data && typeof data.text === 'string') ? data.text : '';
+      if (!assistantMessage) assistantMessage = '[No response text returned]';
+  } catch (err) {
+      console.error(err);
+      assistantMessage = 'Error: could not reach the AI server. Make sure `npm run dev` is running, your `.env` has `ANTHROPIC_API_KEY`, and try again.';
+  }
 
   loadingMsg.remove();
-
-  // Generate dummy response
-  const assistantMessage = generateDummyResponse(message, chatbox.highlightedText);
 
   const assistantMsg = document.createElement('div');
   assistantMsg.className = 'message assistant';
